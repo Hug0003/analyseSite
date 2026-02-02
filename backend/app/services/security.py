@@ -244,46 +244,24 @@ class SecurityAnalyzer:
         # Remove port if present
         if ":" in hostname:
             hostname = hostname.split(":")[0]
-        
-        try:
-            # Create SSL context
-            context = ssl.create_default_context()
             
-            # Connect and get certificate
-            with socket.create_connection((hostname, 443), timeout=self.settings.ssl_timeout) as sock:
-                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                    # Get certificate in binary DER format
-                    cert_der = ssock.getpeercert(binary_form=True)
-                    cert = crypto.load_certificate(crypto.FILETYPE_ASN1, cert_der)
-                    
-                    # Get cipher info
-                    cipher = ssock.cipher()
-                    ssl_info.cipher_suite = cipher[0] if cipher else None
-                    ssl_info.protocol_version = ssock.version()
-                    
-                    # Parse certificate
-                    ssl_info.valid = True
-                    ssl_info.issuer = self._format_x509_name(cert.get_issuer())
-                    ssl_info.subject = self._format_x509_name(cert.get_subject())
-                    
-                    # Parse expiration date
-                    not_after = cert.get_notAfter()
-                    if not_after:
-                        expiry_str = not_after.decode("utf-8")
-                        ssl_info.expires_at = datetime.strptime(expiry_str, "%Y%m%d%H%M%SZ").replace(tzinfo=timezone.utc)
-                        
-                        # Calculate days until expiry
-                        now = datetime.now(timezone.utc)
-                        delta = ssl_info.expires_at - now
-                        ssl_info.days_until_expiry = delta.days
-                        
-                        # Check expiration status
-                        ssl_info.is_expired = ssl_info.days_until_expiry < 0
-                        ssl_info.is_expiring_soon = 0 <= ssl_info.days_until_expiry <= 30
-                    
+        try:
+            # 1. Try Strict Verification first
+            await self._fetch_cert_details(hostname, ssl_info, verify=True)
+            ssl_info.valid = True
+            
         except ssl.SSLCertVerificationError as e:
+            # 2. Verification failed, but we still want the details
             ssl_info.valid = False
             ssl_info.error = f"Certificate verification failed: {str(e)}"
+            
+            try:
+                # Retry without verification to get cert details
+                await self._fetch_cert_details(hostname, ssl_info, verify=False)
+            except Exception as e2:
+                # If even this fails, just keep the original error
+                pass
+                
         except socket.timeout:
             ssl_info.error = "SSL connection timed out"
         except socket.gaierror:
@@ -294,6 +272,55 @@ class SecurityAnalyzer:
             ssl_info.error = f"SSL check error: {str(e)}"
         
         return ssl_info
+
+    async def _fetch_cert_details(self, hostname: str, ssl_info: SSLInfo, verify: bool = True):
+        """Helper to fetch and parse certificate details"""
+        # Create SSL context
+        context = ssl.create_default_context()
+        if not verify:
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+        
+        # Connect and get certificate
+        # Note: We use synchronous socket here because SSL handshake is blocking
+        # Ideally this should be in a thread, but it's fast enough for now
+        with socket.create_connection((hostname, 443), timeout=self.settings.ssl_timeout) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                # Get certificate in binary DER format
+                # When verify=False, getpeercert() returns empty dict unless binary_form=True
+                cert_der = ssock.getpeercert(binary_form=True)
+                if not cert_der:
+                    raise ValueError("No certificate retrieved")
+                    
+                cert = crypto.load_certificate(crypto.FILETYPE_ASN1, cert_der)
+                
+                # Get cipher info
+                cipher = ssock.cipher()
+                ssl_info.cipher_suite = cipher[0] if cipher else None
+                ssl_info.protocol_version = ssock.version()
+                
+                # Parse certificate
+                ssl_info.issuer = self._format_x509_name(cert.get_issuer())
+                ssl_info.subject = self._format_x509_name(cert.get_subject())
+                
+                # Parse expiration date
+                not_after = cert.get_notAfter()
+                if not_after:
+                    expiry_str = not_after.decode("utf-8")
+                    try:
+                        ssl_info.expires_at = datetime.strptime(expiry_str, "%Y%m%d%H%M%SZ").replace(tzinfo=timezone.utc)
+                    except ValueError:
+                         # Fallback for GeneralizedTime format if needed
+                         ssl_info.expires_at = datetime.strptime(expiry_str, "%Y%m%d%H%M%Sz").replace(tzinfo=timezone.utc)
+
+                    # Calculate days until expiry
+                    now = datetime.now(timezone.utc)
+                    delta = ssl_info.expires_at - now
+                    ssl_info.days_until_expiry = delta.days
+                    
+                    # Check expiration status
+                    ssl_info.is_expired = ssl_info.days_until_expiry < 0
+                    ssl_info.is_expiring_soon = 0 <= ssl_info.days_until_expiry <= 30
     
     def _format_x509_name(self, x509_name) -> str:
         """Format X509Name object to string"""

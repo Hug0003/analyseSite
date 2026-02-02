@@ -18,19 +18,23 @@ class GreenITAnalyzer:
             "User-Agent": "Mozilla/5.0 (compatible; EcoIndexBot/1.0; +http://example.com)"
         }
 
-    async def analyze(self, url: str) -> GreenResult:
+    async def analyze(self, url: str, html_content: Optional[str] = None) -> GreenResult:
         result = GreenResult()
         
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=15.0, verify=False, headers=self.headers) as client:
                 # 1. Fetch Main Page
                 try:
-                    resp = await client.get(url)
-                    if resp.status_code >= 400:
-                        result.error = f"HTTP Error {resp.status_code}"
-                        return result
-                    html_size = len(resp.content)
-                    html = resp.text
+                    if html_content:
+                        html = html_content
+                        html_size = len(html.encode("utf-8"))
+                    else:
+                        resp = await client.get(url)
+                        if resp.status_code >= 400:
+                            result.error = f"HTTP Error {resp.status_code}"
+                            return result
+                        html_size = len(resp.content)
+                        html = resp.text
                 except Exception as e:
                     result.error = f"Failed to fetch page: {str(e)}"
                     return result

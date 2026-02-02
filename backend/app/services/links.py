@@ -23,12 +23,13 @@ class BrokenLinksAnalyzer:
     def __init__(self):
         self.settings = get_settings()
     
-    async def analyze(self, url: str) -> BrokenLinksResult:
+    async def analyze(self, url: str, html_content: Optional[str] = None) -> BrokenLinksResult:
         """
         Check for broken links on the given URL
         
         Args:
             url: The URL to analyze
+            html_content: Optional pre-rendered HTML (Deep Scan)
             
         Returns:
             BrokenLinksResult with all detected broken links
@@ -39,30 +40,35 @@ class BrokenLinksAnalyzer:
             parsed = urlparse(url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
             
-            # Fetch the page
-            async with httpx.AsyncClient(
-                timeout=self.settings.request_timeout,
-                follow_redirects=True,
-                verify=False
-            ) as client:
-                response = await client.get(url)
-                html = response.text
+            html = ""
+            
+            if html_content:
+                html = html_content
+            else:
+                # Fetch the page
+                async with httpx.AsyncClient(
+                    timeout=self.settings.request_timeout,
+                    follow_redirects=True,
+                    verify=False
+                ) as client:
+                    response = await client.get(url)
+                    html = response.text
                 
-                # Extract all links
-                links = self._extract_links(html, url, base_url)
-                
-                # Limit number of links to check
-                links = list(links)[:self.MAX_LINKS]
-                result.total_links_checked = len(links)
-                
-                # Check all links concurrently with rate limiting
-                broken_links = await self._check_links(links, base_url)
-                result.broken_links = broken_links
-                result.broken_count = len(broken_links)
-                
-                # Count internal vs external
-                result.internal_broken = sum(1 for link in broken_links if link.is_internal)
-                result.external_broken = sum(1 for link in broken_links if not link.is_internal)
+            # Extract all links
+            links = self._extract_links(html, url, base_url)
+            
+            # Limit number of links to check
+            links = list(links)[:self.MAX_LINKS]
+            result.total_links_checked = len(links)
+            
+            # Check all links concurrently with rate limiting
+            broken_links = await self._check_links(links, base_url)
+            result.broken_links = broken_links
+            result.broken_count = len(broken_links)
+            
+            # Count internal vs external
+            result.internal_broken = sum(1 for link in broken_links if link.is_internal)
+            result.external_broken = sum(1 for link in broken_links if not link.is_internal)
                 
         except httpx.TimeoutException:
             result.error = "Request timed out while fetching page"

@@ -101,6 +101,29 @@ class DNSAnalyzer:
             except:
                  result.dmarc.status = "missing"
 
+            # 4. DKIM Check (Heuristic)
+            # DKIM requires knowing the "selector". We can't know it for sure, 
+            # but we can try common ones.
+            common_selectors = ["default", "google", "mail", "k1", "smtp", "sig1"]
+            result.dkim.selectors_checked = common_selectors
+            
+            for selector in common_selectors:
+                try:
+                    dkim_domain = f"{selector}._domainkey.{email_domain}"
+                    dns.resolver.resolve(dkim_domain, 'TXT')
+                    # If we find it, it exists!
+                    result.dkim.selectors_found.append(selector)
+                    result.dkim.present = True
+                except:
+                    pass
+            
+            if result.dkim.present:
+                result.dkim.status = "found"
+                result.dkim.note = f"Detected active DKIM selectors: {', '.join(result.dkim.selectors_found)}"
+            else:
+                result.dkim.status = "missing" # likely just unknown selector
+                result.dkim.note = "No common DKIM selectors found. Please verify manually in your email provider settings."
+
             # Scoring Logic
             score = 100
             

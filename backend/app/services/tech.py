@@ -284,12 +284,14 @@ class TechStackAnalyzer:
     def __init__(self):
         self.settings = get_settings()
     
-    async def analyze(self, url: str) -> TechStackResult:
+    async def analyze(self, url: str, html_content: Optional[str] = None, headers: Optional[Dict] = None) -> TechStackResult:
         """
         Detect technologies used by the website
         
         Args:
             url: The URL to analyze
+            html_content: Optional pre-rendered HTML (Deep Scan)
+            headers: Optional HTTP headers
             
         Returns:
             TechStackResult with detected technologies
@@ -308,28 +310,35 @@ class TechStackAnalyzer:
                     pass
 
             # 2. Local Detection (Fallback)
-            async with httpx.AsyncClient(
-                timeout=self.settings.request_timeout,
-                follow_redirects=True,
-                verify=False,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-            ) as client:
-                response = await client.get(url)
-                html = response.text
-                headers = dict(response.headers)
+            target_html = ""
+            target_headers = {}
+
+            if html_content:
+                target_html = html_content
+                target_headers = headers or {}
+            else:
+                async with httpx.AsyncClient(
+                    timeout=self.settings.request_timeout,
+                    follow_redirects=True,
+                    verify=False,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                ) as client:
+                    response = await client.get(url)
+                    target_html = response.text
+                    target_headers = dict(response.headers)
+            
+            # Parse HTML
+            soup = BeautifulSoup(target_html, "lxml")
+            
+            # Detect technologies
+            detected_techs = await self._detect_technologies(target_html, target_headers, soup)
+            result.technologies = detected_techs
                 
-                # Parse HTML
-                soup = BeautifulSoup(html, "lxml")
-                
-                # Detect technologies
-                detected_techs = await self._detect_technologies(html, headers, soup)
-                result.technologies = detected_techs
-                
-                # Categorize
-                result = self._categorize_technologies(result)
-                
-                # Check for outdated versions
-                result = self._check_outdated(result)
+            # Categorize
+            result = self._categorize_technologies(result)
+            
+            # Check for outdated versions
+            result = self._check_outdated(result)
                 
         except httpx.TimeoutException:
             result.error = "Request timed out while fetching page"

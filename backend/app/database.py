@@ -28,6 +28,9 @@ def create_db_and_tables():
     # Import models here to ensure they are registered with SQLModel
     from .models.user import User
     from .models.audit import Audit
+    from .models.monitor import Monitor
+    from .models.api_key import ApiKey
+    from .models.lead import Lead
     SQLModel.metadata.create_all(engine)
     print(f"[+] Database initialized at: {DATABASE_FILE}")
 

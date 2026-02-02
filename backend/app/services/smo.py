@@ -17,22 +17,27 @@ class SMOAnalyzer:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         }
 
-    async def analyze(self, url: str) -> SMOResult:
+    async def analyze(self, url: str, html_content: Optional[str] = None) -> SMOResult:
         result = SMOResult()
         
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=10.0, headers=self.headers, verify=False) as client:
-                try:
-                    response = await client.get(url)
-                except Exception as e:
-                    result.error = f"Connection error: {str(e)}"
-                    return result
+                html = ""
+                
+                if html_content:
+                    html = html_content
+                else:
+                    try:
+                        response = await client.get(url)
+                    except Exception as e:
+                        result.error = f"Connection error: {str(e)}"
+                        return result
 
-                if response.status_code >= 400:
-                    result.error = f"Failed to fetch page: {response.status_code}"
-                    return result
+                    if response.status_code >= 400:
+                        result.error = f"Failed to fetch page: {response.status_code}"
+                        return result
 
-                html = response.text
+                    html = response.text
                 soup = BeautifulSoup(html, "html.parser")
 
                 # --- 1. Extraction ---

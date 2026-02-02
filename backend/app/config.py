@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     mail_starttls: bool = True
     mail_ssl_tls: bool = False
     
+    # AI Configuration
+    openai_api_key: str = ""
+    openrouter_api_key: str = ""
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS origins from comma-separated string"""

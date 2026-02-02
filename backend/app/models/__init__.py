@@ -20,7 +20,10 @@ from .schemas import (
     CompanyInfo,
     ContactInfo,
     GDPRResult,
-    CookieItem
+    CookieItem,
+    SMOResult,
+    GreenResult,
+    DNSHealthResult
 )
 
 __all__ = [
@@ -42,5 +45,8 @@ __all__ = [
     "CompanyInfo",
     "ContactInfo",
     "GDPRResult",
-    "CookieItem"
+    "CookieItem",
+    "SMOResult",
+    "GreenResult",
+    "DNSHealthResult"
 ]

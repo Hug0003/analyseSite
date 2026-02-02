@@ -25,7 +25,10 @@ from .config import get_settings
 from .api import analyze_router, users_router, admin_router
 from .api.auth import router as auth_router
 from .api.audit import router as audit_router
+from .api.monitors import router as monitors_router
+from .services.monitoring import start_scheduler, shutdown_scheduler
 from .database import create_db_and_tables
+from .services.rendering import RenderingService
 
 # Configure logging
 logging.basicConfig(
@@ -37,7 +40,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 # Application lifespan management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,14 +48,24 @@ async def lifespan(app: FastAPI):
     print("[*] SiteAuditor Backend starting...")
     settings = get_settings()
     print(f"[*] Running on http://{settings.api_host}:{settings.api_port}")
-    print(f"[*] Debug mode: {settings.debug}")
     
     # Initialize database
     create_db_and_tables()
     
+    # Start Scheduler
+    start_scheduler()
+    
+    # Start Headless Browser
+    try:
+        await RenderingService.start()
+    except Exception as e:
+        logger.warning(f"Failed to start RenderingService: {e}")
+    
     yield
     
     # Shutdown
+    await RenderingService.stop()
+    shutdown_scheduler()
     print("[*] SiteAuditor Backend shutting down...")
 
 
@@ -143,12 +155,37 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+from .api.analyze import router as analyze_router
+from .api.auth import router as auth_router
+from .api.audit import router as audit_router
+from .api.users import router as users_router
+from .api.admin import router as admin_router
+from .api.monitors import router as monitors_router
+from .api.ci_cd import router as ci_cd_router
+from .api.api_keys import router as api_keys_router
+from .api.widget import router as widget_router
+from .api.leads import router as leads_router
+from .api.ai import router as ai_router
+# from .api import monitoring  <-- MISSING MODULE
+
 # Include API routes
-app.include_router(analyze_router)
-app.include_router(auth_router)
-app.include_router(audit_router)
-app.include_router(users_router)
-app.include_router(admin_router)
+# Note: Routers already define their own prefixes (e.g., /api/auth, /api/users), 
+# so we don't need to add them here again, except for those that don't (like ai).
+
+app.include_router(analyze_router) # Contains /api
+app.include_router(auth_router)    # Contains /api/auth
+app.include_router(audit_router)   # Contains /api/audits
+app.include_router(users_router)   # Contains /api/users
+app.include_router(admin_router)   # Contains /api/admin
+app.include_router(monitors_router) # Contains /api/monitors
+# app.include_router(monitoring.router) # Disabled
+
+app.include_router(ci_cd_router)   # Contains /api/v1
+app.include_router(api_keys_router) # Contains /api/api-keys (Verified assumption?)
+app.include_router(widget_router)  # Contains /api/widget (Verified assumption?)
+app.include_router(leads_router)   # Contains /api/leads (Verified assumption?)
+
+app.include_router(ai_router, prefix="/api/ai", tags=["ai"]) # ai.py has NO prefix defined
 
 
 # Root endpoint
@@ -161,6 +198,11 @@ async def root():
         "documentation": "/docs",
         "health": "/api/health"
     }
+
+@app.get("/api/health", tags=["Health"])
+async def health_check():
+    """API Health Check"""
+    return {"status": "ok", "timestamp": time.time()}
 
 
 # Custom OpenAPI schema

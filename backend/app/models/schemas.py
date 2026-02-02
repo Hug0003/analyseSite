@@ -300,9 +300,17 @@ class DMARCInfo(BaseModel):
     policy: Optional[str] = None # none, quarantine, reject
     status: str = "missing"
 
+class DKIMInfo(BaseModel):
+    present: bool = False
+    selectors_checked: List[str] = Field(default_factory=list)
+    selectors_found: List[str] = Field(default_factory=list)
+    status: str = "manual_check" # found, missing, manual_check
+    note: str = "DKIM uses cryptic selectors (e.g. google._domainkey). We checked common ones but a manual check is recommended."
+
 class DNSHealthResult(BaseModel):
     spf: SPFInfo = Field(default_factory=SPFInfo)
     dmarc: DMARCInfo = Field(default_factory=DMARCInfo)
+    dkim: DKIMInfo = Field(default_factory=DKIMInfo)
     domain: Optional[str] = None
     server_ip: Optional[str] = None
     score: int = Field(0, ge=0, le=100)

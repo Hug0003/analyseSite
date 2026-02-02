@@ -21,89 +21,173 @@ class SEOAnalyzer:
         self.settings = get_settings()
         self.api_key = self.settings.google_pagespeed_api_key
     
-    async def analyze(self, url: str, lang: str = "en") -> SEOResult:
+    async def analyze(self, url: str, lang: str = "en", html_content: Optional[str] = None) -> SEOResult:
         """
-        Run PageSpeed Insights analysis on the given URL
+        Run PageSpeed Insights analysis on the given URL, with local fallback.
         
         Args:
             url: The URL to analyze
             lang: Language code for results (en, fr)
+            html_content: Optional pre-rendered HTML (Deep Scan) for fallback analysis
             
         Returns:
-            SEOResult with Lighthouse scores and Core Web Vitals
+            SEOResult with Lighthouse scores or local fallback
         """
         logger.info(f"📊 Starting SEO analysis for: {url} (lang: {lang})")
         
         # Check API key status
         has_api_key = bool(self.api_key and self.api_key != "your_api_key_here" and len(self.api_key) > 10)
-        logger.info(f"🔑 Google API Key configured: {has_api_key}")
-        if has_api_key:
-            logger.info(f"🔑 API Key (first 8 chars): {self.api_key[:8]}...")
         
         try:
             async with httpx.AsyncClient(timeout=90.0) as client:
                 params = {
                     "url": url,
-                    "strategy": "mobile",  # or "desktop"
+                    "strategy": "mobile",
                     "category": ["performance", "seo", "accessibility", "best-practices"],
                     "locale": lang
                 }
                 
-                # Add API key if available
                 if has_api_key:
                     params["key"] = self.api_key
-                    logger.info("🔑 Using API key for PageSpeed request")
                 else:
                     logger.warning("⚠️ No API key - using anonymous mode (rate limited)")
                 
                 logger.info(f"🌐 Sending request to PageSpeed API...")
-                logger.info(f"   URL: {self.PAGESPEED_API_URL}")
-                logger.info(f"   Target: {url}")
                 
                 response = await client.get(self.PAGESPEED_API_URL, params=params)
                 
-                logger.info(f"📥 Response status code: {response.status_code}")
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"✅ Got PageSpeed response successfully")
+                    return self._parse_response(data)
                 
-                if response.status_code == 429:
-                    logger.error("❌ Rate limit exceeded!")
-                    return SEOResult(error="Rate limit exceeded. Please try again later or add a Google API key.")
+                # API Failed (429, 400, 500, etc.)
+                logger.warning(f"⚠️ PageSpeed API error: {response.status_code}. Response: {response.text[:200]}")
                 
-                if response.status_code == 400:
-                    error_data = response.json()
-                    error_msg = error_data.get("error", {}).get("message", "Bad request")
-                    logger.error(f"❌ Bad request: {error_msg}")
-                    return SEOResult(error=f"PageSpeed API error: {error_msg}")
-                
-                if response.status_code != 200:
-                    logger.error(f"❌ PageSpeed API error: {response.status_code}")
-                    logger.error(f"   Response: {response.text[:500]}")
-                    return SEOResult(error=f"PageSpeed API error: {response.status_code}")
-                
-                data = response.json()
-                
-                # Log raw response structure for debugging
-                logger.info(f"✅ Got PageSpeed response successfully")
-                logger.info(f"   Has lighthouseResult: {'lighthouseResult' in data}")
-                if "lighthouseResult" in data:
-                    categories = data["lighthouseResult"].get("categories", {})
-                    logger.info(f"   Categories found: {list(categories.keys())}")
-                    for cat_name, cat_data in categories.items():
-                        score = cat_data.get("score")
-                        logger.info(f"     - {cat_name}: {score * 100 if score else 'null'}")
-                
-                return self._parse_response(data)
-                
-        except httpx.TimeoutException:
-            logger.error(f"❌ PageSpeed API request timed out for {url}")
-            return SEOResult(error="PageSpeed API request timed out. The target site may be slow to respond.")
-        except httpx.RequestError as e:
-            logger.error(f"❌ Request error: {str(e)}")
-            return SEOResult(error=f"Request error: {str(e)}")
         except Exception as e:
-            logger.error(f"❌ Unexpected error during SEO analysis: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return SEOResult(error=f"Unexpected error: {str(e)}")
+            logger.error(f"❌ SEO API connection error: {str(e)}")
+        
+        # --- Fallback: Local Analysis ---
+        target_html = html_content
+        
+        if not target_html:
+            logger.info("⚠️ No Deep Scan HTML available. Attempting simple fetch for local fallback...")
+            try:
+                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, verify=False, headers={"User-Agent": "Mozilla/5.0 (compatible; SiteAuditorBot/1.0)"}) as client:
+                    resp = await client.get(url)
+                    if resp.status_code == 200:
+                        target_html = resp.text
+            except Exception as e:
+                logger.error(f"❌ Fallback fetch failed: {e}")
+
+        if target_html:
+            logger.info("⚡ Executing Local SEO Analysis")
+            return self._local_analyze(target_html, url)
+            
+        return SEOResult(error="PageSpeed API failed and all local fetch attempts failed.")
+
+    def _local_analyze(self, html: str, url: str) -> SEOResult:
+        """Perform basic SEO analysis locally using BeautifulSoup"""
+        from bs4 import BeautifulSoup
+        
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            result = SEOResult()
+            result.scores = LighthouseScores(performance=0, seo=0, accessibility=0, best_practices=0)
+            
+            audits = []
+            score_acc = 0
+            
+            # 1. Title
+            title = soup.title.string.strip() if soup.title and soup.title.string else None
+            has_title = bool(title)
+            score_acc += 20 if has_title else 0
+            audits.append({
+                "id": "document-title", 
+                "title": "Document has a title", 
+                "passed": has_title, 
+                "displayValue": title if title else "Missing"
+            })
+            
+            # 2. Meta Description
+            meta_desc = soup.find("meta", attrs={"name": "description"})
+            has_desc = bool(meta_desc and meta_desc.get("content"))
+            score_acc += 20 if has_desc else 0
+            audits.append({
+                "id": "meta-description", 
+                "title": "Document has a meta description", 
+                "passed": has_desc,
+                "displayValue": meta_desc["content"][:50] + "..." if has_desc else "Missing"
+            })
+            
+            # 3. H1
+            h1s = soup.find_all("h1")
+            has_h1 = len(h1s) == 1
+            score_acc += 20 if has_h1 else (10 if len(h1s) > 0 else 0)
+            audits.append({
+                "id": "heading-order", 
+                "title": "Heading structure", 
+                "passed": has_h1,
+                "displayValue": f"Found {len(h1s)} H1 tags"
+            })
+            
+            # 4. Image Alts
+            imgs = soup.find_all("img")
+            imgs_missing_alt = [img for img in imgs if not img.get("alt")]
+            passed_alts = len(imgs) > 0 and len(imgs_missing_alt) == 0
+            score_acc += 20 if passed_alts else 0
+            audits.append({
+                "id": "image-alt",
+                "title": "Images have alt attributes",
+                "passed": passed_alts,
+                "displayValue": f"{len(imgs_missing_alt)} images missing alt text"
+            })
+            
+            # 5. Viewport
+            viewport = soup.find("meta", attrs={"name": "viewport"})
+            has_viewport = bool(viewport and viewport.get("content"))
+            score_acc += 20 if has_viewport else 0
+            audits.append({
+                "id": "viewport",
+                "title": "Has viewport meta tag",
+                "passed": has_viewport
+            })
+
+            # Calculate pseudo-score
+            result.scores.seo = score_acc
+            # 6. EST. Performance Score
+            perf_score = 100
+            
+            # Penalty for HTML size (> 200KB)
+            html_size_kb = len(html) / 1024
+            if html_size_kb > 200: perf_score -= 10
+            if html_size_kb > 1000: perf_score -= 20
+            
+            # Penalty for too many scripts (> 20)
+            scripts_count = len(soup.find_all("script"))
+            if scripts_count > 20: perf_score -= 10
+            if scripts_count > 50: perf_score -= 15
+            
+            # Penalty for missing lazy loading
+            imgs_no_lazy = [img for img in imgs if img.get("loading") != "lazy"]
+            if len(imgs_no_lazy) > 5: perf_score -= 5
+            
+            result.scores.performance = max(30, min(95, perf_score))
+            result.audits = audits
+            
+            # Add a warning note
+            result.diagnostics = [{
+                "id": "local-fallback",
+                "title": "Local Analysis Mode",
+                "description": "Google PageSpeed API was unreachable. Results are estimated locally from Deep Scan data.",
+                "score": 0.5
+            }]
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Local analysis failed: {e}")
+            return SEOResult(error=f"Local analysis failed: {e}")
     
     def _parse_response(self, data: Dict[str, Any]) -> SEOResult:
         """Parse PageSpeed Insights API response"""
