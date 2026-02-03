@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Rocket, Calendar, Archive, CheckCircle2, Shield, Search, Zap, Leaf, Info, Wrench, X, Copy, ExternalLink, ChevronRight } from "lucide-react"
+import { Rocket, Calendar, Archive, CheckCircle2, Shield, Search, Zap, Leaf, Info, Wrench, X, Copy, ExternalLink, ChevronRight, Sparkles, Loader2 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import {
     Sheet,
@@ -32,6 +32,11 @@ export function RoadmapBoard({ errors }: RoadmapBoardProps) {
     const [selectedTask, setSelectedTask] = useState<RoadmapTask | null>(null)
     const [activeGuide, setActiveGuide] = useState<FixGuide | null>(null)
     const [isExpanded, setIsExpanded] = useState(true)
+
+    // AI Fix states
+    const [generatingAI, setGeneratingAI] = useState<Record<string, boolean>>({})
+    const [aiGuides, setAiGuides] = useState<Record<string, any>>({})
+    const [aiErrors, setAiErrors] = useState<Record<string, string>>({})
 
     // Initialize tasks from errors prop
     useEffect(() => {
@@ -69,6 +74,34 @@ export function RoadmapBoard({ errors }: RoadmapBoardProps) {
         const guide = getFixGuide(task.label) || getFixGuide(task.originalError)
         setActiveGuide(guide)
         setSelectedTask(task)
+    }
+
+    const generateAIFix = async (task: RoadmapTask) => {
+        setGeneratingAI(prev => ({ ...prev, [task.id]: true }))
+        setAiErrors(prev => ({ ...prev, [task.id]: '' }))
+
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/ai/fix`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    issue_type: task.category.toLowerCase(),
+                    context: {
+                        error_message: task.originalError || task.label,
+                        category: task.category,
+                        description: task.label
+                    }
+                })
+            })
+
+            if (!res.ok) throw new Error("Erreur API")
+            const json = await res.json()
+            setAiGuides(prev => ({ ...prev, [task.id]: json }))
+        } catch (err) {
+            setAiErrors(prev => ({ ...prev, [task.id]: 'Impossible de générer la correction IA.' }))
+        } finally {
+            setGeneratingAI(prev => ({ ...prev, [task.id]: false }))
+        }
     }
 
     const columns = [
@@ -217,16 +250,102 @@ export function RoadmapBoard({ errors }: RoadmapBoardProps) {
                                                                                         </Badge>
                                                                                     </div>
 
-                                                                                    <Button
-                                                                                        variant="ghost"
-                                                                                        size="sm"
-                                                                                        className="h-6 px-2 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
-                                                                                        onClick={() => openFixGuide(task)}
-                                                                                    >
-                                                                                        <Wrench className="w-3 h-3 mr-1" />
-                                                                                        Corriger
-                                                                                    </Button>
+                                                                                    <div className="flex gap-1">
+                                                                                        <Button
+                                                                                            variant="ghost"
+                                                                                            size="sm"
+                                                                                            className="h-6 px-2 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+                                                                                            onClick={() => openFixGuide(task)}
+                                                                                        >
+                                                                                            <Wrench className="w-3 h-3 mr-1" />
+                                                                                            Corriger
+                                                                                        </Button>
+
+                                                                                        <Button
+                                                                                            variant="ghost"
+                                                                                            size="sm"
+                                                                                            className="h-6 px-2 text-[10px] text-violet-400 hover:text-violet-300 hover:bg-violet-400/10"
+                                                                                            onClick={() => generateAIFix(task)}
+                                                                                            disabled={generatingAI[task.id]}
+                                                                                        >
+                                                                                            {generatingAI[task.id] ? (
+                                                                                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                                                                            ) : (
+                                                                                                <Sparkles className="w-3 h-3 mr-1" />
+                                                                                            )}
+                                                                                            IA Fix
+                                                                                        </Button>
+                                                                                    </div>
                                                                                 </div>
+
+                                                                                {/* AI Generated Guide Display */}
+                                                                                {aiGuides[task.id] && (
+                                                                                    <div className="mt-3 space-y-2 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 animate-in fade-in zoom-in-95 duration-300">
+                                                                                        <div className="flex items-center gap-2 mb-2">
+                                                                                            <Sparkles className="w-3 h-3 text-violet-400" />
+                                                                                            <span className="text-xs font-semibold text-violet-400">Correction IA</span>
+                                                                                        </div>
+
+                                                                                        {aiGuides[task.id].why && (
+                                                                                            <p className="text-xs text-zinc-300 leading-relaxed">{aiGuides[task.id].why}</p>
+                                                                                        )}
+
+                                                                                        {aiGuides[task.id].code && (
+                                                                                            <div className="mt-2">
+                                                                                                <div className="flex items-center justify-between mb-1">
+                                                                                                    <span className="text-[10px] text-emerald-400 font-medium">Code:</span>
+                                                                                                    <Button
+                                                                                                        size="sm"
+                                                                                                        variant="ghost"
+                                                                                                        className="h-4 px-1 text-[9px]"
+                                                                                                        onClick={() => navigator.clipboard.writeText(aiGuides[task.id].code)}
+                                                                                                    >
+                                                                                                        <Copy className="w-2 h-2 mr-0.5" />
+                                                                                                        Copier
+                                                                                                    </Button>
+                                                                                                </div>
+                                                                                                <pre className="p-2 rounded bg-zinc-950 border border-emerald-500/30 text-[10px] font-mono text-emerald-100 overflow-x-auto whitespace-pre-wrap">
+                                                                                                    {aiGuides[task.id].code}
+                                                                                                </pre>
+                                                                                            </div>
+                                                                                        )}
+
+                                                                                        {aiGuides[task.id].steps && aiGuides[task.id].steps.length > 0 && (
+                                                                                            <div className="mt-2">
+                                                                                                <span className="text-[10px] text-blue-400 font-medium">Étapes:</span>
+                                                                                                <ol className="mt-1 space-y-1">
+                                                                                                    {aiGuides[task.id].steps.map((step: string, i: number) => (
+                                                                                                        <li key={i} className="text-[10px] text-zinc-300 flex gap-1">
+                                                                                                            <span className="text-blue-400">{i + 1}.</span>
+                                                                                                            <span>{step}</span>
+                                                                                                        </li>
+                                                                                                    ))}
+                                                                                                </ol>
+                                                                                            </div>
+                                                                                        )}
+
+                                                                                        <Button
+                                                                                            size="sm"
+                                                                                            variant="ghost"
+                                                                                            className="h-5 px-1 text-[9px] text-zinc-500 hover:text-white mt-2 w-full"
+                                                                                            onClick={() => setAiGuides(prev => {
+                                                                                                const newGuides = { ...prev }
+                                                                                                delete newGuides[task.id]
+                                                                                                return newGuides
+                                                                                            })}
+                                                                                        >
+                                                                                            <X className="w-2 h-2 mr-0.5" />
+                                                                                            Fermer
+                                                                                        </Button>
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {/* AI Error Display */}
+                                                                                {aiErrors[task.id] && (
+                                                                                    <div className="mt-2 p-2 rounded bg-red-500/10 border border-red-500/20">
+                                                                                        <p className="text-[10px] text-red-400">{aiErrors[task.id]}</p>
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
                                                                         </div>
                                                                     </CardContent>

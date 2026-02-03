@@ -63,7 +63,7 @@ async def generate_executive_summary(scan_results: Dict[str, Any]) -> AiSummaryR
         
         # 3. Call OpenRouter API
         # Using a widely available model alias or the specific one
-        model_name = "openai/gpt-4o-2024-08-06"
+        model_name = "google/gemini-2.0-flash-lite-001"
         
         response = await client.chat.completions.create(
             model=model_name,

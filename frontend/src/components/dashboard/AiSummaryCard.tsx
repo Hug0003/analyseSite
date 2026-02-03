@@ -60,12 +60,12 @@ export function AiSummaryCard({ data }: AiSummaryCardProps) {
         if (summary?.summary) {
             setIsTyping(true)
             let i = 0
-            const text = summary.summary
+            const text = summary.summary.trim() // Trim to avoid invisible first chars
             setDisplayedSummary("")
 
             const interval = setInterval(() => {
-                setDisplayedSummary(prev => prev + text.charAt(i))
                 i++
+                setDisplayedSummary(text.substring(0, i))
                 if (i >= text.length) {
                     clearInterval(interval)
                     setIsTyping(false)

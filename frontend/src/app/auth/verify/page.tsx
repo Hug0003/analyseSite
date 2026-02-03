@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 
-export default function VerifyPage() {
+import { Suspense } from "react"
+
+function VerifyContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const email = searchParams.get("email")
@@ -160,5 +162,13 @@ export default function VerifyPage() {
                 </CardContent>
             </Card>
         </div>
+    )
+}
+
+export default function VerifyPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>}>
+            <VerifyContent />
+        </Suspense>
     )
 }

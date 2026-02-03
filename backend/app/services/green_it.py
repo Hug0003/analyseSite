@@ -6,7 +6,7 @@ import httpx
 import asyncio
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
-from typing import Set, Tuple
+from typing import Set, Tuple, Optional
 
 from ..config import get_settings
 from ..models.schemas import GreenResult

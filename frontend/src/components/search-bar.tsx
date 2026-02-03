@@ -30,10 +30,26 @@ export function SearchBar({
     const [showCompetitor, setShowCompetitor] = useState(false);
     const [isFocused, setIsFocused] = useState(false);
 
+    const cleanUrl = (input: string) => {
+        return input
+            .replace(/^(?:https?:\/\/)?(?:www[./])?/, "")
+            .replace(/\/$/, "")
+            .trim();
+    };
+
+    const handleBlur = () => {
+        setIsFocused(false);
+        if (url) setUrl(cleanUrl(url));
+    };
+
+    const handleCompetitorBlur = () => {
+        if (competitorUrl) setCompetitorUrl(cleanUrl(competitorUrl));
+    };
+
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         if (url.trim() && !isLoading) {
-            onSearch(url.trim(), showCompetitor && competitorUrl.trim() ? competitorUrl.trim() : undefined);
+            onSearch(cleanUrl(url.trim()), showCompetitor && competitorUrl.trim() ? cleanUrl(competitorUrl.trim()) : undefined);
         }
     };
 
@@ -78,7 +94,7 @@ export function SearchBar({
                             value={url}
                             onChange={(e) => setUrl(e.target.value)}
                             onFocus={() => setIsFocused(true)}
-                            onBlur={() => setIsFocused(false)}
+                            onBlur={handleBlur}
                             placeholder={placeholder}
                             disabled={isLoading}
                             className="flex-1 bg-transparent border-none text-lg text-white placeholder:text-zinc-500 focus-visible:ring-0 focus-visible:ring-offset-0 h-12"
@@ -133,6 +149,7 @@ export function SearchBar({
                                     onChange={(e) => setCompetitorUrl(e.target.value)}
                                     placeholder="URL du concurrent (optionnel)"
                                     disabled={isLoading}
+                                    onBlur={handleCompetitorBlur}
                                     className="flex-1 bg-zinc-800/30 border border-zinc-700/50 text-sm text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-orange-500/50 h-10 rounded-lg"
                                 />
                             </div>

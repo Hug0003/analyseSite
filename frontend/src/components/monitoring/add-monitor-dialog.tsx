@@ -38,10 +38,9 @@ import { Plus, Loader2 } from "lucide-react"
 
 const formSchema = z.object({
     url: z.string().transform((val) => {
-        if (!val.startsWith('http://') && !val.startsWith('https://')) {
-            return `https://${val}`
-        }
-        return val
+        // Remove protocol and www (dot or slash)
+        const cleaned = val.replace(/^(?:https?:\/\/)?(?:www[./])?/, "").replace(/\/$/, "").trim();
+        return `https://${cleaned}`;
     }).pipe(z.string().url("Please enter a valid URL")),
     frequency: z.enum(["daily", "weekly"]),
     threshold: z.coerce.number().min(0).max(100),
@@ -130,7 +129,18 @@ export function AddMonitorDialog({ onSuccess }: AddMonitorDialogProps) {
                                 <FormItem>
                                     <FormLabel>Website URL</FormLabel>
                                     <FormControl>
-                                        <Input placeholder="example.com" {...field} />
+                                        <Input
+                                            placeholder="example.com"
+                                            {...field}
+                                            onBlur={(e) => {
+                                                const cleaned = e.target.value
+                                                    .replace(/^(?:https?:\/\/)?(?:www[./])?/, "")
+                                                    .replace(/\/$/, "")
+                                                    .trim();
+                                                field.onChange(cleaned);
+                                                field.onBlur();
+                                            }}
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>

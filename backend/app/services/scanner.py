@@ -4,8 +4,9 @@ Orchestrates the analysis of URLs using various specialized analyzers.
 """
 import asyncio
 import time
+import json
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, AsyncGenerator
 import httpx
 import logging
 from .rendering import RenderingService
@@ -36,11 +37,34 @@ from .dns_health import DNSAnalyzer
 
 async def process_url(url: str, lang: str = "en") -> AnalyzeResponse:
     """
-    Process a single URL.
-    Runs all analyzers in parallel.
+    Process a single URL (Wrapper around stream).
+    Maintains backward compatibility.
+    """
+    final_result = None
+    async for chunk in process_url_stream(url, lang):
+        try:
+            data = json.loads(chunk)
+            if data.get("type") == "complete":
+                final_result = AnalyzeResponse(**data["data"])
+        except:
+            pass
+            
+    if not final_result:
+        raise Exception("Analysis stream completed without result")
+        
+    return final_result
+
+
+async def process_url_stream(url: str, lang: str = "en") -> AsyncGenerator[str, None]:
+    """
+    Generator that streams analysis progress and final result.
+    Yields JSON strings (NDJSON format).
     """
     start_time = time.time()
     
+    # 1. Yield Start
+    yield json.dumps({"type": "log", "step": "init", "message": f"Starting analysis for {url}..."}) + "\n"
+
     # Initialize analyzers
     seo_analyzer = SEOAnalyzer()
     security_analyzer = SecurityAnalyzer()
@@ -54,84 +78,116 @@ async def process_url(url: str, lang: str = "en") -> AnalyzeResponse:
     errors = []
     
     try:
-        # Run all analyses in parallel
-    
-
         rendered_html = None
         headers = None
         
-        # 1. Fetch Headers (Lightweight)
+        # 2. Check Accessibility (Pre-flight check)
+        yield json.dumps({"type": "log", "step": "network", "message": "Checking site accessibility..."}) + "\n"
         try:
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, verify=False) as client:
-                 h_resp = await client.head(url)
-                 headers = dict(h_resp.headers)
-                 if not headers or len(headers) < 3:
-                     h_resp = await client.get(url)  # Fallback
-                     headers = dict(h_resp.headers)
-        except Exception as e:
-            logger.warning(f"Failed to fetch initial headers for {url}: {e}")
+             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, verify=False) as client:
+                 # Check if site is reachable
+                 try:
+                    response = await client.head(url)
+                    headers = dict(response.headers)
+                    if response.status_code >= 400:
+                        # try GET if HEAD failed
+                         response = await client.get(url)
+                         headers = dict(response.headers)
+                 except httpx.ConnectError:
+                      # DNS or connection failure
+                      raise Exception(f"Could not connect to {url}. The site may not exist or is unreachable.")
+                 except Exception as e:
+                      # Other network error, try one last GET
+                      try:
+                           response = await client.get(url)
+                           headers = dict(response.headers)
+                      except Exception:
+                           raise Exception(f"Could not connect to {url}. Is the URL correct?")
+                 
+                 # Final verification
+                 if response.status_code >= 500:
+                      yield json.dumps({"type": "log", "step": "network", "message": f"Warning: Server returned {response.status_code}."}) + "\n"
 
-        # 2. Fetch Rendered DOM (Deep Scan)
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Pre-flight check failed for {url}: {e}")
+            yield json.dumps({"type": "error", "message": error_msg}) + "\n"
+            return
+            
+        yield json.dumps({"type": "log", "step": "network", "message": "Site is accessible."}) + "\n"
+
+        # 3. Fetch Rendered DOM
+        yield json.dumps({"type": "log", "step": "rendering", "message": "Simulating browser visit (Puppeteer)..."}) + "\n"
         try:
             rendered_html = await RenderingService.fetch_rendered_html(url)
+            yield json.dumps({"type": "log", "step": "rendering", "message": "Page rendered successfully."}) + "\n"
         except Exception as e:
             logger.error(f"Deep Scan failed for {url}: {e}")
-            # Analyzers will fall back to their own fetching if html is None
+            yield json.dumps({"type": "log", "step": "rendering", "message": "Rendering failed, falling back to static analysis."}) + "\n"
         
-        # Run all analyses in parallel
-        seo_result, security_result, tech_result, links_result, gdpr_result, smo_result, green_result, dns_result = await asyncio.gather(
-            seo_analyzer.analyze(url, lang, html_content=rendered_html),
-            security_analyzer.analyze(url),
-            tech_analyzer.analyze(url, html_content=rendered_html, headers=headers),
-            links_analyzer.analyze(url, html_content=rendered_html),
-            gdpr_analyzer.analyze(url),
-            smo_analyzer.analyze(url, html_content=rendered_html),
-            green_analyzer.analyze(url, html_content=rendered_html),
-            dns_analyzer.analyze(url),
-            return_exceptions=True
-        )
+        # 4. Prepare Parallel Tasks
+        yield json.dumps({"type": "log", "step": "analysis", "message": "Running specialized scanners..."}) + "\n"
         
-        # Handle any exceptions from individual analyzers
-        if isinstance(seo_result, Exception):
-            errors.append(f"SEO analysis failed: {str(seo_result)}")
-            seo_result = SEOResult(error=str(seo_result))
-        
-        if isinstance(security_result, Exception):
-            errors.append(f"Security analysis failed: {str(security_result)}")
-            security_result = SecurityResult(error=str(security_result))
-        
-        if isinstance(tech_result, Exception):
-            errors.append(f"Tech stack analysis failed: {str(tech_result)}")
-            tech_result = TechStackResult(error=str(tech_result))
-        
-        if isinstance(links_result, Exception):
-            errors.append(f"Broken links analysis failed: {str(links_result)}")
-            links_result = BrokenLinksResult(error=str(links_result))
+        async def run_wrapper(name, coro):
+            try:
+                res = await coro
+                return name, res
+            except Exception as e:
+                return name, e
 
-        if isinstance(gdpr_result, Exception):
-            errors.append(f"GDPR analysis failed: {str(gdpr_result)}")
-            gdpr_result = GDPRResult(error=str(gdpr_result))
+        tasks = [
+            run_wrapper("seo", seo_analyzer.analyze(url, lang, html_content=rendered_html)),
+            run_wrapper("security", security_analyzer.analyze(url)),
+            run_wrapper("tech", tech_analyzer.analyze(url, html_content=rendered_html, headers=headers)),
+            run_wrapper("links", links_analyzer.analyze(url, html_content=rendered_html)),
+            run_wrapper("gdpr", gdpr_analyzer.analyze(url)),
+            run_wrapper("smo", smo_analyzer.analyze(url, html_content=rendered_html)),
+            run_wrapper("green", green_analyzer.analyze(url, html_content=rendered_html)),
+            run_wrapper("dns", dns_analyzer.analyze(url))
+        ]
+        
+        results_map = {}
+        
+        # 5. Run and yield as completed
+        for future in asyncio.as_completed(tasks):
+             name, result = await future
+             results_map[name] = result
+             
+             # Yield progress log
+             clean_name = name.upper() if len(name) < 4 else name.title()
+             if isinstance(result, Exception):
+                 yield json.dumps({"type": "log", "step": name, "message": f"❌ {clean_name} failed."}) + "\n"
+             else:
+                 yield json.dumps({"type": "log", "step": name, "message": f"✅ {clean_name} completed."}) + "\n"
 
-        if isinstance(smo_result, Exception):
-            errors.append(f"SMO analysis failed: {str(smo_result)}")
-            smo_result = SMOResult(error=str(smo_result))
+        # 6. Aggregate Results
+        yield json.dumps({"type": "log", "step": "finalize", "message": "Aggregating results..."}) + "\n"
+        
+        # Helper to extract or handle error
+        def get_res(key, default_cls, err_append):
+            res = results_map.get(key)
+            if isinstance(res, Exception):
+                err_append.append(f"{key.upper()} analysis failed: {str(res)}")
+                return default_cls(error=str(res))
+            return res or default_cls(error="Result missing")
 
-        if isinstance(green_result, Exception):
-            errors.append(f"Green IT analysis failed: {str(green_result)}")
-            green_result = GreenResult(error=str(green_result))
-
-        if isinstance(dns_result, Exception):
-            errors.append(f"DNS analysis failed: {str(dns_result)}")
-            dns_result = DNSHealthResult(error=str(dns_result))
+        seo_result = get_res("seo", SEOResult, errors)
+        security_result = get_res("security", SecurityResult, errors)
+        tech_result = get_res("tech", TechStackResult, errors)
+        links_result = get_res("links", BrokenLinksResult, errors)
+        gdpr_result = get_res("gdpr", GDPRResult, errors)
+        smo_result = get_res("smo", SMOResult, errors)
+        green_result = get_res("green", GreenResult, errors)
+        dns_result = get_res("dns", DNSHealthResult, errors)
         
         # Calculate duration
         duration = time.time() - start_time
         
         # Build response
-        response = AnalyzeResponse(
+        final_response = AnalyzeResponse(
             url=url,
             analyzed_at=datetime.utcnow(),
-            status=AuditStatus.COMPLETED if not errors else AuditStatus.COMPLETED,
+            status=AuditStatus.COMPLETED,
             seo=seo_result,
             security=security_result,
             tech_stack=tech_result,
@@ -143,12 +199,15 @@ async def process_url(url: str, lang: str = "en") -> AnalyzeResponse:
             scan_duration_seconds=round(duration, 2),
             errors=errors
         )
-        
-        # Calculate global score
-        response.calculate_global_score()
-        
-        return response
-        
+        final_response.calculate_global_score()
+
+        # 7. Yield Final Result
+        yield json.dumps({
+            "type": "complete", 
+            "data": final_response.model_dump(mode='json')
+        }) + "\n"
+
     except Exception as e:
-        # Ensure we don't crash the whole parallel execution if one site completely fails before gathering
+        logger.error(f"Stream failed: {e}")
+        yield json.dumps({"type": "error", "message": str(e)}) + "\n"
         raise e

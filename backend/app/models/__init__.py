@@ -23,12 +23,16 @@ from .schemas import (
     CookieItem,
     SMOResult,
     GreenResult,
-    DNSHealthResult
+    DNSHealthResult,
+    AnalyzeResponse,
+    TaskResponse
 )
+from .task import ScanTask
 
 __all__ = [
     "AnalyzeRequest",
     "AnalyzeResponse",
+    "TaskResponse",
     "SEOResult",
     "SecurityResult",
     "TechStackResult",

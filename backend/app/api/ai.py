@@ -23,3 +23,27 @@ async def get_ai_summary(request: GenerateSummaryRequest):
         raise HTTPException(status_code=400, detail="Scan results are required")
         
     return await generate_executive_summary(request.scan_results)
+
+
+class FixRequest(BaseModel):
+    issue_type: str
+    context: dict
+
+@router.post("/fix")
+async def get_fix(request: FixRequest):
+    """
+    On-demand code generation to fix a specific issue.
+    Returns a structured guide with steps, commands, and validation.
+    """
+    from app.services.ai_fixer import generate_fix
+    
+    if not request.issue_type:
+        raise HTTPException(status_code=400, detail="Issue type is required")
+        
+    result = await generate_fix(request.issue_type, request.context)
+    
+    # Check for errors in the response
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result.get("error"))
+        
+    return result

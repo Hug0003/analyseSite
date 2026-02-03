@@ -143,14 +143,67 @@ async def add_timing_header(request: Request, call_next):
 
 
 # Global exception handler
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+# Enhanced Exception Handling
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle standard HTTP exceptions with consistent JSON format"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": "HTTP_ERROR",
+            "code": exc.status_code,
+            "message": exc.detail
+        }
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle validation errors (422)"""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "VALIDATION_ERROR",
+            "message": "Invalid request parameters",
+            "details": exc.errors()
+        }
+    )
+
+@app.exception_handler(asyncio.TimeoutError)
+async def timeout_exception_handler(request: Request, exc: asyncio.TimeoutError):
+    """Handle async timeouts (e.g. scan taking too long)"""
+    logger.error(f"❌ Operation timed out: {exc}")
+    return JSONResponse(
+        status_code=408,
+        content={
+            "error": "SCAN_TIMEOUT",
+            "message": "The analysis took too long to complete. Please try again later or with a smaller page."
+        }
+    )
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Handle uncaught exceptions"""
+    """Handle all other uncaught exceptions"""
+    # Log the full traceback for debugging
+    logger.exception(f"❌ Uncaught exception: {exc}")
+    
+    error_code = "INTERNAL_SERVER_ERROR"
+    message = "An unexpected error occurred"
+    
+    # Specific handling for common errors could be added here
+    if "connection refused" in str(exc).lower():
+        error_code = "CONNECTION_REFUSED"
+        message = "Could not connect to the target server."
+    
     return JSONResponse(
         status_code=500,
         content={
-            "error": "Internal server error",
-            "detail": str(exc) if settings.debug else "An unexpected error occurred"
+            "error": error_code,
+            "message": message,
+            "detail": str(exc) if settings.debug else None
         }
     )
 
@@ -165,6 +218,7 @@ from .api.ci_cd import router as ci_cd_router
 from .api.api_keys import router as api_keys_router
 from .api.widget import router as widget_router
 from .api.leads import router as leads_router
+from .api.tasks import router as tasks_router
 from .api.ai import router as ai_router
 # from .api import monitoring  <-- MISSING MODULE
 
@@ -184,6 +238,7 @@ app.include_router(ci_cd_router)   # Contains /api/v1
 app.include_router(api_keys_router) # Contains /api/api-keys (Verified assumption?)
 app.include_router(widget_router)  # Contains /api/widget (Verified assumption?)
 app.include_router(leads_router)   # Contains /api/leads (Verified assumption?)
+app.include_router(tasks_router)   # Contains /api/tasks
 
 app.include_router(ai_router, prefix="/api/ai", tags=["ai"]) # ai.py has NO prefix defined
 

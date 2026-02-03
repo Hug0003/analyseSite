@@ -28,6 +28,11 @@ class SeverityLevel(str, Enum):
     INFO = "info"
     OK = "ok"
 
+class TaskResponse(BaseModel):
+    """Response when a background task is created"""
+    task_id: str
+    status: str = "pending"
+    url: str
 
 # ============================================
 # Request Models

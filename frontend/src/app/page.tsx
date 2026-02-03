@@ -11,6 +11,8 @@ import { useLanguage } from "@/lib/i18n";
 import { AnalyzeResponse, AnalysisStep } from "@/types";
 import { AlertCircle, Sparkles } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAnalyzeStream } from "@/hooks/useAnalyzeStream";
+import { useSaveScan } from "@/hooks/useScan";
 
 type AppState = "idle" | "loading" | "results" | "error";
 
@@ -44,30 +46,24 @@ export default function Home() {
     healthCheck().then(setIsApiHealthy);
   }, []);
 
-  // Simulate step progression during loading
+
+  const { analyzeUrlStream, logs, currentStep } = useAnalyzeStream();
+  const { mutate: mutateSaveScan } = useSaveScan();
+
+  // Use logs to update step status visually
   useEffect(() => {
-    if (state !== "loading") return;
+    if (state !== "loading" || !currentStep) return;
 
-    const stepDelays = [1000, 2500, 4000, 5500];
-    const timeouts: NodeJS.Timeout[] = [];
-
-    stepDelays.forEach((delay, index) => {
-      const timeout = setTimeout(() => {
-        setSteps((prev) =>
-          prev.map((step, i) => {
-            if (i < index) return { ...step, status: "completed" as const };
-            if (i === index) return { ...step, status: "running" as const };
-            return step;
-          })
-        );
-      }, delay);
-      timeouts.push(timeout);
-    });
-
-    return () => {
-      timeouts.forEach(clearTimeout);
-    };
-  }, [state]);
+    setSteps(prev => prev.map(step => {
+      // Map backend step names to frontend step IDs
+      // backend: seo, security, tech, links
+      // frontend ids: seo, security, tech, links
+      if (step.id === currentStep) {
+        return { ...step, status: "completed" };
+      }
+      return step;
+    }));
+  }, [currentStep, state]);
 
   const handleSearch = useCallback(async (url: string, competitorUrl?: string) => {
     setState("loading");
@@ -75,84 +71,33 @@ export default function Home() {
     setSteps(getInitialSteps().map((s) => ({ ...s, status: "pending" })));
 
     try {
-      const data = await analyzeUrl(url, language, competitorUrl);
+      // Use Streaming Hook
+      const data = await analyzeUrlStream(url, language);
 
       // Save to history if authenticated
-      console.log("Analysis complete. Authenticated:", isAuthenticated);
-
       if (isAuthenticated) {
-        try {
-          const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
-          const token = localStorage.getItem('access_token');
-
-          const saveScan = async (scanData: AnalyzeResponse) => {
-            console.log("Saving scan to history:", scanData.url);
-
-            const response = await fetch(`${API_BASE_URL}/api/audits/`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                url: scanData.url,
-                score: scanData.global_score,
-                summary: {
-                  seo: scanData.seo.scores.seo != null ? Math.round(scanData.seo.scores.seo <= 1 ? scanData.seo.scores.seo * 100 : scanData.seo.scores.seo) : 0,
-                  security: Math.round(scanData.security.score),
-                  performance: scanData.seo.scores.performance != null ? Math.round(scanData.seo.scores.performance <= 1 ? scanData.seo.scores.performance * 100 : scanData.seo.scores.performance) : 0
-                }
-              })
-            });
-
-            if (response.ok) {
-              console.log("Scan saved successfully:", scanData.url);
-            } else {
-              console.error("Failed to save scan:", await response.text());
-            }
-          };
-
-          // Save main scan
-          await saveScan(data);
-
-          // Save competitor scan if exists
-          if (data.competitor) {
-            await saveScan(data.competitor);
-          }
-
-        } catch (saveError) {
-          console.error("Failed to save audit history:", saveError);
-          // Don't block the UI, just log the error
-        }
+        mutateSaveScan(data);
       }
 
-      // Mark all steps as completed
       setSteps((prev) => prev.map((s) => ({ ...s, status: "completed" })));
-
-      // Small delay to show completion
+      // Small delay just for UX smoothness
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       setResults(data);
       setState("results");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Analysis error:", err);
 
-      // Mark current step as error
-      setSteps((prev) => {
-        const runningIndex = prev.findIndex((s) => s.status === "running");
-        return prev.map((s, i) =>
-          i === runningIndex ? { ...s, status: "error" as const } : s
-        );
-      });
+      setSteps((prev) => prev.map(s => ({ ...s, status: "error" })));
 
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError(t.home.apiUnavailable);
+        setError(err.message || t.home.apiUnavailable);
       }
       setState("error");
     }
-  }, [getInitialSteps, t.home.apiUnavailable, language, isAuthenticated]);
+  }, [getInitialSteps, t.home.apiUnavailable, language, isAuthenticated, analyzeUrlStream]);
 
   const handleBack = useCallback(() => {
     setState("idle");
@@ -266,7 +211,7 @@ export default function Home() {
 
           {/* Loading progress */}
           {state === "loading" && (
-            <LoadingProgress steps={steps} className="mt-8" />
+            <LoadingProgress steps={steps} logs={logs} className="mt-8" />
           )}
         </div>
       </main>
