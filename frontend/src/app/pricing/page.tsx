@@ -7,6 +7,7 @@ import { Check, Shield, Zap, Building, ArrowRight } from "lucide-react";
 import { createCheckoutSession, createPortalSession, simulateUpgrade } from "@/lib/api";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { FEATURES } from "@/lib/plans";
 
 export default function PricingPage() {
     const { user, isAuthenticated, loading, refreshUser } = useAuth();
@@ -95,13 +96,12 @@ export default function PricingPage() {
                         </div>
 
                         <ul className="space-y-3 mb-8 flex-1">
-                            <FeatureItem text="Scan Simple" />
-                            <FeatureItem text="1 Website Monitor" />
-                            <FeatureItem text="Historique limité (7j)" />
-                            <FeatureItem text="Support Standard" />
-                            <FeatureItem text="PDF Export" unavailable />
-                            <FeatureItem text="IA Copilote" unavailable />
-                            <FeatureItem text="Marque Blanche" unavailable />
+                            {FEATURES.map((f, i) => {
+                                const val = f.starter;
+                                const unavailable = val === false;
+                                const text = typeof val === 'boolean' ? f.label : `${f.label} : ${val}`;
+                                return <FeatureItem key={i} text={text} unavailable={unavailable} />;
+                            })}
                         </ul>
 
                         <button
@@ -132,12 +132,12 @@ export default function PricingPage() {
                         </div>
 
                         <ul className="space-y-3 mb-8 flex-1">
-                            <FeatureItem text="Scans Illimités" />
-                            <FeatureItem text="PDF Export" />
-                            <FeatureItem text="Historique (30j)" />
-                            <FeatureItem text="IA Copilote" />
-                            <FeatureItem text="Deep Security Analysis" />
-                            <FeatureItem text="Marque Blanche" unavailable />
+                            {FEATURES.map((f, i) => {
+                                const val = f.pro;
+                                const unavailable = val === false;
+                                const text = typeof val === 'boolean' ? f.label : `${f.label} : ${val}`;
+                                return <FeatureItem key={i} text={text} unavailable={unavailable} />;
+                            })}
                         </ul>
 
                         {isAuthenticated ? (
@@ -190,12 +190,12 @@ export default function PricingPage() {
                         </div>
 
                         <ul className="space-y-3 mb-8 flex-1">
-                            <FeatureItem text="Tout Pro" />
-                            <FeatureItem text="Marque Blanche" />
-                            <FeatureItem text="Widget Lead Gen" />
-                            <FeatureItem text="API CI/CD" />
-                            <FeatureItem text="Support Prioritaire" />
-                            <FeatureItem text="5 sièges d'équipe" />
+                            {FEATURES.map((f, i) => {
+                                const val = f.agency;
+                                const unavailable = val === false;
+                                const text = typeof val === 'boolean' ? f.label : `${f.label} : ${val}`;
+                                return <FeatureItem key={i} text={text} unavailable={unavailable} />;
+                            })}
                         </ul>
 
                         {isAuthenticated ? (

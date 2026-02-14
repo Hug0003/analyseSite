@@ -97,7 +97,25 @@ export default function BrandingSettingsPage() {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative">
+                    {/* Gating Overlay */}
+                    {user?.plan_tier !== "agency" && (
+                        <div className="absolute inset-0 z-50 backdrop-blur-md bg-zinc-950/50 flex flex-col items-center justify-center text-center p-8 border border-zinc-800 rounded-xl">
+                            <div className="p-4 rounded-full bg-violet-500/10 mb-4">
+                                <Building className="w-12 h-12 text-violet-400" />
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-2">Marque Blanche</h3>
+                            <p className="text-zinc-400 max-w-md mb-6">
+                                La personnalisation avancée et la suppression de la mention SiteAuditor nécessitent un plan Agency.
+                            </p>
+                            <Button
+                                className="bg-violet-600 hover:bg-violet-500 text-white"
+                                onClick={() => window.location.href = '/pricing'}
+                            >
+                                Passer au plan Agency
+                            </Button>
+                        </div>
+                    )}
                     {/* Configuration Form */}
                     <Card className="border-zinc-800 bg-black/40 backdrop-blur-xl">
                         <CardHeader>

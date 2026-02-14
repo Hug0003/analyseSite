@@ -1,14 +1,14 @@
 
 PLANS = {
     "starter": {
-        "daily_scans": 3,
+        "daily_scans": 5,
         "features": ["basic_scan"],
         "label": "Starter (Gratuit)",
         "history_days": 7,
-        "monitor_limit": 2
+        "monitor_limit": 1
     },
     "pro": {
-        "daily_scans": 100,
+        "daily_scans": 50,
         "features": ["basic_scan", "deep_scan", "pdf_export", "history", "ai_assistant"],
         "label": "Pro",
         "history_days": 30,

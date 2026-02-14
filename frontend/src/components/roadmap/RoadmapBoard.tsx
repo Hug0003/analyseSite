@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Rocket, Calendar, Archive, CheckCircle2, Shield, Search, Zap, Leaf, Info, Wrench, X, Copy, ExternalLink, ChevronRight, Sparkles, Loader2 } from "lucide-react"
+import { Rocket, Calendar, Archive, CheckCircle2, Shield, Search, Zap, Leaf, Info, Wrench, X, Copy, ExternalLink, ChevronRight, Sparkles, Loader2, Lock } from "lucide-react"
+import { useAuth } from "@/contexts/AuthContext"
 import { Progress } from "@/components/ui/progress"
 import {
     Sheet,
@@ -27,6 +28,7 @@ interface RoadmapBoardProps {
 }
 
 export function RoadmapBoard({ errors }: RoadmapBoardProps) {
+    const { user } = useAuth();
     const [tasks, setTasks] = useState<RoadmapTask[]>([])
     const [progress, setProgress] = useState(0)
     const [selectedTask, setSelectedTask] = useState<RoadmapTask | null>(null)
@@ -265,20 +267,32 @@ export function RoadmapBoard({ errors }: RoadmapBoardProps) {
                                                                                             Corriger
                                                                                         </Button>
 
-                                                                                        <Button
-                                                                                            variant="ghost"
-                                                                                            size="sm"
-                                                                                            className="h-6 px-2 text-[10px] text-violet-400 hover:text-violet-300 hover:bg-violet-400/10"
-                                                                                            onClick={() => generateAIFix(task)}
-                                                                                            disabled={generatingAI[task.id]}
-                                                                                        >
-                                                                                            {generatingAI[task.id] ? (
-                                                                                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                                                                                            ) : (
-                                                                                                <Sparkles className="w-3 h-3 mr-1" />
-                                                                                            )}
-                                                                                            IA Fix
-                                                                                        </Button>
+                                                                                        {user?.plan_tier && user.plan_tier !== 'starter' ? (
+                                                                                            <Button
+                                                                                                variant="ghost"
+                                                                                                size="sm"
+                                                                                                className="h-6 px-2 text-[10px] text-violet-400 hover:text-violet-300 hover:bg-violet-400/10"
+                                                                                                onClick={() => generateAIFix(task)}
+                                                                                                disabled={generatingAI[task.id]}
+                                                                                            >
+                                                                                                {generatingAI[task.id] ? (
+                                                                                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                                                                                ) : (
+                                                                                                    <Sparkles className="w-3 h-3 mr-1" />
+                                                                                                )}
+                                                                                                IA Fix
+                                                                                            </Button>
+                                                                                        ) : (
+                                                                                            <Button
+                                                                                                variant="ghost"
+                                                                                                size="sm"
+                                                                                                className="h-6 px-2 text-[10px] text-zinc-500 cursor-not-allowed opacity-70"
+                                                                                                onClick={() => window.location.href = '/pricing'}
+                                                                                            >
+                                                                                                <Lock className="w-3 h-3 mr-1" />
+                                                                                                IA (Pro)
+                                                                                            </Button>
+                                                                                        )}
                                                                                     </div>
                                                                                 </div>
 

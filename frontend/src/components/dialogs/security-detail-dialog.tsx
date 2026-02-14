@@ -18,6 +18,7 @@ import {
     ExternalLink,
     Copy,
     Check,
+    Lock,
     CheckCircle2,
     Sparkles,
     Loader2
@@ -26,6 +27,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/lib/i18n";
 import { SeverityLevel } from "@/types";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SecurityDetailDialogProps {
     open: boolean;
@@ -53,7 +55,9 @@ const severityColors: Record<SeverityLevel, { bg: string; text: string; border: 
 
 export function SecurityDetailDialog({ open, onOpenChange, type, data }: SecurityDetailDialogProps) {
     const { t } = useLanguage();
+    const { user } = useAuth();
     const [copied, setCopied] = useState(false);
+    const canUseAI = user?.plan_tier === "pro" || user?.plan_tier === "agency";
 
     // Get detailed info from translations
     const detailedInfo = type === "header"
@@ -202,23 +206,30 @@ export function SecurityDetailDialog({ open, onOpenChange, type, data }: Securit
                             </div>
 
                             {!generatedGuide ? (
-                                <Button
-                                    onClick={handleGenerateFix}
-                                    disabled={isFixing}
-                                    className="w-full bg-violet-600 hover:bg-violet-700 text-white border-none"
-                                >
-                                    {isFixing ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                            Génération du guide de déploiement...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkles className="w-4 h-4 mr-2" />
-                                            ✨ Générer le guide de correction
-                                        </>
-                                    )}
-                                </Button>
+                                canUseAI ? (
+                                    <Button
+                                        onClick={handleGenerateFix}
+                                        disabled={isFixing}
+                                        className="w-full bg-violet-600 hover:bg-violet-700 text-white border-none"
+                                    >
+                                        {isFixing ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Génération du guide de déploiement...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className="w-4 h-4 mr-2" />
+                                                ✨ Générer le guide de correction
+                                            </>
+                                        )}
+                                    </Button>
+                                ) : (
+                                    <a href="/pricing" className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-400 hover:bg-zinc-700 transition-colors text-sm">
+                                        <Lock className="w-4 h-4" />
+                                        Fix IA — <span className="text-violet-400 font-medium">Plan Pro requis</span>
+                                    </a>
+                                )
                             ) : (
                                 <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
                                     {/* Business Impact */}

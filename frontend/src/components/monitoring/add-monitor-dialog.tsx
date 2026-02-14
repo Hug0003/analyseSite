@@ -1,10 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm, SubmitHandler } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { MonitorCreate } from "@/types/monitor"
 import { Button } from "@/components/ui/button"
 import {
     Dialog,
@@ -39,7 +38,16 @@ import { Plus, Loader2 } from "lucide-react"
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? ""
 
 const formSchema = z.object({
-    url: z.string().url("Please enter a valid URL (https://...)"),
+    url: z.string()
+        .min(3, "URL is required")
+        .transform((val) => {
+            // Auto-add https:// if missing
+            if (!/^https?:\/\//i.test(val)) {
+                return `https://${val}`
+            }
+            return val
+        })
+        .pipe(z.string().url("Please enter a valid URL (e.g. example.com)")),
     frequency: z.enum(["daily", "weekly"]),
     alert_threshold: z.coerce.number().min(1).max(100),
     check_hour: z.coerce.number().min(0).max(23),
@@ -54,115 +62,169 @@ interface AddMonitorDialogProps {
 
 export function AddMonitorDialog({ onSuccess }: AddMonitorDialogProps) {
     const [open, setOpen] = useState(false)
-    const { isAuthenticated } = useAuth()
+    const [isLoading, setIsLoading] = useState(false)
+    const { user } = useAuth()
+    const [monitorCount, setMonitorCount] = useState<number | null>(null)
 
     const form = useForm<FormValues>({
-        resolver: zodResolver(formSchema) as any,
+        resolver: zodResolver(formSchema),
         defaultValues: {
             url: "",
-            frequency: "daily" as const,
-            alert_threshold: 10,
+            frequency: "daily",
+            alert_threshold: 80,
             check_hour: 9,
         },
     })
 
-    const onSubmit: SubmitHandler<FormValues> = async (values) => {
-        if (!isAuthenticated) {
+    // Calculate limit based on plan
+    const getLimit = () => {
+        switch (user?.plan_tier) {
+            case "agency": return 9999;
+            case "pro": return 10;
+            default: return 1; // starter
+        }
+    }
+    const limit = getLimit()
+
+    // Fetch count logic
+    const fetchCount = async () => {
+        try {
+            const token = localStorage.getItem('access_token')
+            if (!token) return
+            const res = await fetch(`${API_BASE}/api/monitors`, {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                setMonitorCount(data.length)
+            }
+        } catch (e) {
+            console.error(e)
+        }
+    }
+
+    // Refresh count when user changes
+    useEffect(() => {
+        if (user) fetchCount()
+    }, [user])
+
+    const onSubmit: SubmitHandler<FormValues> = async (data) => {
+        setIsLoading(true)
+        if (!user) {
             toast.error("You must be logged in to create a monitor")
+            setIsLoading(false)
             return
         }
 
         try {
             const token = localStorage.getItem('access_token')
-            const response = await fetch(`${API_BASE}/api/monitors/`, {
+            const response = await fetch(`${API_BASE}/api/monitors`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${token}`
                 },
-                body: JSON.stringify(values),
+                body: JSON.stringify(data),
             })
 
             if (!response.ok) {
-                const errBody = await response.json().catch(() => ({}))
-                const msg = Array.isArray(errBody.detail) ? errBody.detail.map((e: any) => e.msg || e).join(", ") : (errBody.detail || "Failed to create monitor")
+                const errorData = await response.json().catch(() => ({}))
+                if (response.status === 403) {
+                    toast.error("Plan Limit Reached", {
+                        description: errorData.detail || "Upgrade your plan to add more monitors."
+                    })
+                    return
+                }
+                const msg = Array.isArray(errorData.detail) ? errorData.detail.map((e: any) => e.msg || e).join(", ") : (errorData.detail || "Failed to create monitor")
                 throw new Error(msg)
             }
 
-            toast.success("Watchdog activated for " + values.url)
+            toast.success("Watchdog activated for " + data.url)
             setOpen(false)
             form.reset()
             onSuccess()
+            fetchCount() // Refresh local count
         } catch (error) {
-            console.error(error)
-            toast.error(error instanceof Error ? error.message : "Error creating monitor")
+            console.error("Error creating monitor:", error)
+            toast.error(error instanceof Error ? error.message : "Error creating monitor", {
+                description: "Please try again later."
+            })
+        } finally {
+            setIsLoading(false)
         }
     }
 
+    const isLimitReached = monitorCount !== null && monitorCount >= limit
+
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(val) => {
+            if (val) fetchCount()
+            setOpen(val)
+        }}>
             <DialogTrigger asChild>
-                <Button className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600">
+                <Button className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-600" variant={isLimitReached ? "outline" : "default"}>
                     <Plus className="h-4 w-4" />
-                    New Monitor
+                    {isLimitReached ? "Limit Reached" : "Add Monitor"}
+                    {monitorCount !== null && (
+                        <span className="ml-1 text-xs opacity-80 bg-black/20 px-1.5 py-0.5 rounded-full">
+                            {monitorCount}/{limit}
+                        </span>
+                    )}
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>Add Watchdog Monitor</DialogTitle>
+                    <DialogTitle>Add New Monitor</DialogTitle>
                     <DialogDescription>
-                        On scanne cette URL automatiquement et on t’alerte si le score baisse. La limite dépend de ton abonnement ; en passant Pro ou Agency tu peux en créer plus.
+                        Configure a new URL to be monitored automatically.
                     </DialogDescription>
                 </DialogHeader>
-                <Form {...form}>
-                    <form
-                        onSubmit={form.handleSubmit(onSubmit, (errors) => {
-                            console.error("Form validation errors:", errors)
-                            toast.error("Please fix the errors in the form")
-                        })}
-                        className="space-y-4"
-                    >
-                        <FormField
-                            control={form.control}
-                            name="url"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Website URL</FormLabel>
-                                    <FormControl>
-                                        <Input
-                                            placeholder="example.com"
-                                            {...field}
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="check_hour"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Preferred Check Time (UTC)</FormLabel>
-                                    <Select onValueChange={(val) => field.onChange(parseInt(val))} defaultValue={field.value.toString()}>
+
+                {isLimitReached ? (
+                    <div className="py-6 text-center space-y-4">
+                        <div className="p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg inline-block">
+                            <span className="text-orange-500 font-semibold">
+                                {monitorCount}/{limit} Monitors Used
+                            </span>
+                        </div>
+                        <p className="text-muted-foreground text-sm">
+                            You have reached the maximum number of monitors for your <strong>{user?.plan_tier || 'Starter'}</strong> plan.
+                        </p>
+                        <Button className="w-full bg-violet-600 hover:bg-violet-500" onClick={() => window.location.href = '/pricing'}>
+                            Upgrade Plan
+                        </Button>
+                    </div>
+                ) : (
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                            <FormField
+                                control={form.control}
+                                name="url"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>URL to Monitor</FormLabel>
                                         <FormControl>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select hour" />
-                                            </SelectTrigger>
+                                            <Input placeholder="https://example.com" {...field} />
                                         </FormControl>
-                                        <SelectContent className="max-h-[200px]">
-                                            {Array.from({ length: 24 }).map((_, i) => (
-                                                <SelectItem key={i} value={i.toString()}>
-                                                    {i.toString().padStart(2, '0')}:00
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <div className="grid grid-cols-2 gap-4">
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="check_hour"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Preferred Check Hour (UTC)</FormLabel>
+                                        <FormControl>
+                                            <Input type="number" min={0} max={23} {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
                             <div className="grid grid-cols-2 gap-4">
                                 <FormField
                                     control={form.control}
@@ -214,6 +276,7 @@ export function AddMonitorDialog({ onSuccess }: AddMonitorDialogProps) {
                                     />
                                 )}
                             </div>
+
                             <FormField
                                 control={form.control}
                                 name="alert_threshold"
@@ -221,31 +284,26 @@ export function AddMonitorDialog({ onSuccess }: AddMonitorDialogProps) {
                                     <FormItem>
                                         <FormLabel>Alert Sensitivity (Score Drop)</FormLabel>
                                         <FormControl>
-                                            <Input type="number" {...field} />
+                                            <div className="relative">
+                                                <Input type="number" {...field} className="pr-8" />
+                                                <span className="absolute right-3 top-2.5 text-sm text-muted-foreground">%</span>
+                                            </div>
                                         </FormControl>
-                                        <FormDescription>Alert if score drops by {field.value} points</FormDescription>
+                                        <FormDescription>Alert if score drops below</FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
                             />
-                        </div>
-                        <DialogFooter>
-                            <Button
-                                type="submit"
-                                disabled={form.formState.isSubmitting}
-                            >
-                                {form.formState.isSubmitting ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Creating...
-                                    </>
-                                ) : (
-                                    "Start Monitoring"
-                                )}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </Form>
+
+                            <DialogFooter>
+                                <Button type="submit" disabled={isLoading}>
+                                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Create Monitor
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </Form>
+                )}
             </DialogContent>
         </Dialog>
     )

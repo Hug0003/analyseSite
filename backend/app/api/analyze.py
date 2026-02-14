@@ -7,7 +7,7 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 # ── Third-Party ──
@@ -44,12 +44,22 @@ router = APIRouter(prefix="/api", tags=["Analysis"])
 async def analyze_url(
     request: AnalyzeRequest,
     current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ) -> AnalyzeResponse:
     if not FeatureGuard.check_scan_quota(current_user):
         raise HTTPException(
             status_code=403,
             detail="Daily scan quota reached. Upgrade your plan for more.",
         )
+    # Increment scan counter
+    today = date.today()
+    if current_user.last_scan_date != today:
+        current_user.scans_count_today = 1
+        current_user.last_scan_date = today
+    else:
+        current_user.scans_count_today += 1
+    session.add(current_user)
+    session.commit()
     url = request.url
     if not validators.url(url):
         raise HTTPException(
@@ -112,12 +122,22 @@ async def analyze_stream(
     url: str,
     lang: str = "en",
     current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
     if not FeatureGuard.check_scan_quota(current_user):
         raise HTTPException(
             status_code=403,
             detail="Daily scan quota reached. Upgrade your plan for more.",
         )
+    # Increment scan counter
+    today = date.today()
+    if current_user.last_scan_date != today:
+        current_user.scans_count_today = 1
+        current_user.last_scan_date = today
+    else:
+        current_user.scans_count_today += 1
+    session.add(current_user)
+    session.commit()
     url = url.strip()
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
@@ -182,6 +202,15 @@ async def analyze_url_async(
             status_code=403,
             detail="Daily scan quota reached. Upgrade your plan for more.",
         )
+    # Increment scan counter
+    today = date.today()
+    if current_user.last_scan_date != today:
+        current_user.scans_count_today = 1
+        current_user.last_scan_date = today
+    else:
+        current_user.scans_count_today += 1
+    session.add(current_user)
+    session.commit()
     url = request.url
     if not validators.url(url):
         raise HTTPException(status_code=400, detail=f"Invalid URL: {url}")

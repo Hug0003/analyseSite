@@ -14,7 +14,7 @@ import json
 router = APIRouter(prefix="/api/audits", tags=["Audits"])
 
 
-@router.post("/", response_model=AuditRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AuditRead, status_code=status.HTTP_201_CREATED)
 async def create_audit(
     audit_in: AuditCreate,
     current_user: User = Depends(get_current_user),
@@ -57,7 +57,7 @@ async def create_audit(
     return audit
 
 
-@router.get("/", response_model=List[AuditRead])
+@router.get("", response_model=List[AuditRead])
 async def read_audits(
     skip: int = 0,
     limit: int = 100,
@@ -124,7 +124,7 @@ async def delete_audit(
     return None
 
 
-@router.delete("/", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_all_audits(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)

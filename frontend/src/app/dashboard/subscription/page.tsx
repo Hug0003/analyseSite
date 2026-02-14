@@ -11,6 +11,7 @@ import { toast } from "sonner"
 import { useState } from "react"
 import { useEffect } from "react"
 import Link from "next/link"
+import { FEATURES } from "@/lib/plans"
 
 const PRICE_ID_PRO = "price_pro_monthly"
 const PRICE_ID_AGENCY = "price_agency_monthly"
@@ -111,13 +112,12 @@ export default function SubscriptionPage() {
                                 <span className="text-muted-foreground">/mois</span>
                             </div>
                             <ul className="space-y-3 text-sm">
-                                <FeatureItem text="Scan Simple" />
-                                <FeatureItem text="1 Website Monitor" />
-                                <FeatureItem text="Historique limité (7j)" />
-                                <FeatureItem text="Support Standard" />
-                                <FeatureItem text="PDF Export" unavailable />
-                                <FeatureItem text="IA Copilote" unavailable />
-                                <FeatureItem text="Marque Blanche" unavailable />
+                                {FEATURES.map((f, i) => {
+                                    const val = f.starter;
+                                    const unavailable = val === false;
+                                    const text = typeof val === 'boolean' ? f.label : `${f.label} : ${val}`;
+                                    return <FeatureItem key={i} text={text} unavailable={unavailable} />;
+                                })}
                             </ul>
                         </CardContent>
                         <CardFooter>
@@ -151,12 +151,12 @@ export default function SubscriptionPage() {
                                 <span className="text-muted-foreground">/mois</span>
                             </div>
                             <ul className="space-y-3 text-sm">
-                                <FeatureItem text="Scans Illimités" />
-                                <FeatureItem text="PDF Export" />
-                                <FeatureItem text="Historique (30j)" />
-                                <FeatureItem text="IA Copilote" />
-                                <FeatureItem text="Deep Security Analysis" />
-                                <FeatureItem text="Marque Blanche" unavailable />
+                                {FEATURES.map((f, i) => {
+                                    const val = f.pro;
+                                    const unavailable = val === false;
+                                    const text = typeof val === 'boolean' ? f.label : `${f.label} : ${val}`;
+                                    return <FeatureItem key={i} text={text} unavailable={unavailable} />;
+                                })}
                             </ul>
                         </CardContent>
                         <CardFooter>
@@ -196,12 +196,12 @@ export default function SubscriptionPage() {
                                 <span className="text-zinc-500">/mois</span>
                             </div>
                             <ul className="space-y-3 text-sm">
-                                <FeatureItem text="Tout Pro" />
-                                <FeatureItem text="Marque Blanche" />
-                                <FeatureItem text="Widget Lead Gen" />
-                                <FeatureItem text="API CI/CD" />
-                                <FeatureItem text="Support Prioritaire" />
-                                <FeatureItem text="5 sièges d'équipe" />
+                                {FEATURES.map((f, i) => {
+                                    const val = f.agency;
+                                    const unavailable = val === false;
+                                    const text = typeof val === 'boolean' ? f.label : `${f.label} : ${val}`;
+                                    return <FeatureItem key={i} text={text} unavailable={unavailable} />;
+                                })}
                             </ul>
                         </CardContent>
                         <CardFooter>

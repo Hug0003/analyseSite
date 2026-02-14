@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import { Trash2, Copy, Plus, Terminal, Key } from "lucide-react"
+import { Trash2, Copy, Plus, Terminal, Key, Lock } from "lucide-react"
 import {
     Dialog,
     DialogContent,
@@ -127,62 +127,69 @@ export function ApiKeysManager() {
                             Gérez les clés pour l'intégration CI/CD et l'API
                         </CardDescription>
                     </div>
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button size="sm" className="gap-2">
-                                <Plus className="w-4 h-4" />
-                                Nouvelle Clé
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-md bg-zinc-950 border-zinc-800">
-                            <DialogHeader>
-                                <DialogTitle>Créer une nouvelle clé d'API</DialogTitle>
-                                <DialogDescription>
-                                    Donnez un nom à cette clé pour l'identifier (ex: "GitHub Actions", "Laptop Pro").
-                                </DialogDescription>
-                            </DialogHeader>
-                            {!createdKey ? (
-                                <div className="space-y-4 py-4">
-                                    <div className="space-y-2">
-                                        <Input
-                                            placeholder="Nom de la clé..."
-                                            value={newKeyName}
-                                            onChange={(e) => setNewKeyName(e.target.value)}
-                                        />
-                                    </div>
-                                    <Button onClick={handleCreateKey} disabled={!newKeyName.trim()} className="w-full">
-                                        Générer la clé
-                                    </Button>
-                                </div>
-                            ) : (
-                                <div className="space-y-4 py-4">
-                                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
-                                        <p className="text-sm text-yellow-500 mb-2 font-semibold">
-                                            ATTENTION : Copiez cette clé maintenant. Vous ne pourrez plus la voir par la suite !
-                                        </p>
-                                        <div className="flex items-center gap-2 bg-black/50 p-2 rounded border border-zinc-800">
-                                            <code className="flex-1 text-sm font-mono text-zinc-300 break-all">
-                                                {createdKey.key}
-                                            </code>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-8 w-8 p-0"
-                                                onClick={() => copyToClipboard(createdKey.key)}
-                                            >
-                                                <Copy className="w-4 h-4" />
-                                            </Button>
+                    {user?.plan_tier === "agency" ? (
+                        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button size="sm" className="gap-2">
+                                    <Plus className="w-4 h-4" />
+                                    Nouvelle Clé
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-md bg-zinc-950 border-zinc-800">
+                                <DialogHeader>
+                                    <DialogTitle>Créer une nouvelle clé d'API</DialogTitle>
+                                    <DialogDescription>
+                                        Donnez un nom à cette clé pour l'identifier (ex: "GitHub Actions", "Laptop Pro").
+                                    </DialogDescription>
+                                </DialogHeader>
+                                {!createdKey ? (
+                                    <div className="space-y-4 py-4">
+                                        <div className="space-y-2">
+                                            <Input
+                                                placeholder="Nom de la clé..."
+                                                value={newKeyName}
+                                                onChange={(e) => setNewKeyName(e.target.value)}
+                                            />
                                         </div>
-                                    </div>
-                                    <DialogFooter>
-                                        <Button onClick={() => { setIsDialogOpen(false); setCreatedKey(null); }}>
-                                            J'ai copié la clé
+                                        <Button onClick={handleCreateKey} disabled={!newKeyName.trim()} className="w-full">
+                                            Générer la clé
                                         </Button>
-                                    </DialogFooter>
-                                </div>
-                            )}
-                        </DialogContent>
-                    </Dialog>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4 py-4">
+                                        <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                                            <p className="text-sm text-yellow-500 mb-2 font-semibold">
+                                                ATTENTION : Copiez cette clé maintenant. Vous ne pourrez plus la voir par la suite !
+                                            </p>
+                                            <div className="flex items-center gap-2 bg-black/50 p-2 rounded border border-zinc-800">
+                                                <code className="flex-1 text-sm font-mono text-zinc-300 break-all">
+                                                    {createdKey.key}
+                                                </code>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0"
+                                                    onClick={() => copyToClipboard(createdKey.key)}
+                                                >
+                                                    <Copy className="w-4 h-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button onClick={() => { setIsDialogOpen(false); setCreatedKey(null); }}>
+                                                J'ai copié la clé
+                                            </Button>
+                                        </DialogFooter>
+                                    </div>
+                                )}
+                            </DialogContent>
+                        </Dialog>
+                    ) : (
+                        <Button variant="outline" size="sm" className="gap-2 opacity-50 cursor-not-allowed" onClick={() => window.location.href = '/pricing'}>
+                            <Lock className="w-4 h-4" />
+                            Agency Plan Required
+                        </Button>
+                    )}
                 </div>
             </CardHeader>
             <CardContent>

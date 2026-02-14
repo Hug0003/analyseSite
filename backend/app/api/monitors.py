@@ -13,7 +13,7 @@ from ..services.monitoring import check_monitors
 
 router = APIRouter(prefix="/api/monitors", tags=["Monitoring"])
 
-@router.post("/", response_model=MonitorRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=MonitorRead, status_code=status.HTTP_201_CREATED)
 async def create_monitor(
     monitor_in: MonitorCreate,
     current_user: User = Depends(get_current_user),
@@ -51,7 +51,7 @@ async def create_monitor(
     session.refresh(monitor)
     return monitor
 
-@router.get("/", response_model=List[MonitorRead])
+@router.get("", response_model=List[MonitorRead])
 async def read_monitors(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)

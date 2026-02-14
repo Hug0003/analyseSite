@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Card, CardContent } from "@/components/ui/card"
-import { Sparkles, ArrowRight, Clock, Target, AlertTriangle } from "lucide-react"
+import { Sparkles, ArrowRight, Clock, Target, AlertTriangle, Lock } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { AnalyzeResponse } from "@/types/api"
+import { useAuth } from "@/contexts/AuthContext"
 
 interface AiSummaryCardProps {
     data: AnalyzeResponse
@@ -16,16 +17,19 @@ interface AiSummaryResponse {
 }
 
 export function AiSummaryCard({ data }: AiSummaryCardProps) {
+    const { user } = useAuth()
     const [summary, setSummary] = useState<AiSummaryResponse | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const [displayedSummary, setDisplayedSummary] = useState("")
     const [isTyping, setIsTyping] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
+    const canUseAI = user?.plan_tier === "pro" || user?.plan_tier === "agency"
+
     // Trigger AI analysis when data is available
     useEffect(() => {
         const fetchSummary = async () => {
-            if (!data) return
+            if (!data || !canUseAI) return
 
             setIsLoading(true)
             setError(null)
@@ -79,6 +83,32 @@ export function AiSummaryCard({ data }: AiSummaryCardProps) {
             return () => clearInterval(interval)
         }
     }, [summary])
+
+    if (!canUseAI) {
+        return (
+            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+                <Card className="bg-gradient-to-br from-zinc-900 to-zinc-800 border-zinc-700/50">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 rounded-xl bg-violet-500/10">
+                                <Lock className="w-6 h-6 text-violet-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-white font-semibold flex items-center gap-2">
+                                    Résumé IA
+                                    <Badge className="bg-violet-500/20 text-violet-300 text-[10px]">PRO</Badge>
+                                </h3>
+                                <p className="text-zinc-400 text-sm">Passez au plan Pro pour obtenir un résumé IA de votre audit.</p>
+                            </div>
+                        </div>
+                        <a href="/pricing" className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors">
+                            Upgrade
+                        </a>
+                    </CardContent>
+                </Card>
+            </motion.div>
+        )
+    }
 
     if (!summary && !isLoading && !error) return null
 

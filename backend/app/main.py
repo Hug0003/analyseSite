@@ -26,9 +26,9 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
     shutdown_scheduler()
 
-from .api import auth, analyze, audit, billing, monitors, ai
+from .api import auth, analyze, audit, billing, monitors, ai, api_keys
 
-app = FastAPI(title="SiteAuditor API", lifespan=lifespan)
+app = FastAPI(title="SiteAuditor API", lifespan=lifespan, redirect_slashes=False)
 
 settings = get_settings()
 
@@ -57,6 +57,7 @@ app.include_router(audit.router)
 app.include_router(billing.router)
 app.include_router(monitors.router)
 app.include_router(ai.router)
+app.include_router(api_keys.router)
 
 @app.get("/")
 def read_root():
